@@ -1,0 +1,61 @@
+%This code sweeps multiple paraemeters of the nanoantenna and calculates
+%the optimum parameters. The best parameters are the ones which have the
+%best collection eff. for a single mode fiber i.e. with NA=0.12. 
+
+%% INITIALIZE VECTORS AND CONSTANTS
+clear all
+Period=[700,800];
+Main=[1500,1370];
+SlitHeight=100;
+ElementWidth=150;
+theta=-pi/2:0.01:3*pi/2;
+theta2=0:0.01:pi;
+[x,y]=pol2cart(theta,ones(1,length(theta)));
+theta=theta-pi/2;
+intensity=zeros(length(theta),length(Main),length(Period),length(SlitHeight),length(ElementWidth));
+Coll_int=zeros(length(theta2),length(Main),length(Period),length(SlitHeight),length(ElementWidth));
+SM_coup_int=zeros(length(Main),length(Period),length(SlitHeight),length(ElementWidth));
+
+%% EVALUATE THE COLL. EFF. FOR EACH SET OF PARAMETERS
+for i1=1:1:length(Main)
+    for i2=1:1:length(Period)
+        for i3=1:1:length(SlitHeight)
+            for i4=1:1:length(ElementWidth)
+                model=model(Main(i1),Period(i2),SlitHeight(i3),ElementWidth(i4));
+                Efar=mphinterp(model,'emw.normEfar','Coord',[x;y]);
+                intensity(:,i1,i2,i3,i4)=Efar.^2;
+                str_parameters={'Main',Main(i1);'Period',Period(i2);...
+                    'SlitHeight',SlitHeight(i3);'ElementWidth',ElementWidth(i4)};
+                I_fit=fit(theta',intensity(:,i1,i2,i3,i4),'cubicinterp');
+                Coll_int(:,i1,i2,i3,i4)=integrate(I_fit,theta2,0)-integrate(I_fit,-theta2,0);
+                export_coll_int=Coll_int(:,i1,i2,i3,i4);
+                file_name=sprintf('%s%d%s%d%s%d%s%d%s','Main',...
+                    Main(i1),'_Period',Period(i2),'_SlitHt',SlitHeight(i3),...
+                    '_ElementWidth',ElementWidth(i4),'.mat');
+                save(file_name,'theta2','export_coll_int','str_parameters')
+                SM_coup_int(i1,i2,i3,i4)=Coll_int(13,i1,i2,i3,i4);
+                clear model
+            end
+        end
+    end
+end
+
+%% FIND AND PLOT THE BEST SET OF PARAMETERS 
+max_coup_int=max(max(max(max(SM_coup_int))));
+max_index=find(SM_coup_int==max_coup_int);
+size_SM_coup=[length(Main),length(Period),length(SlitHeight),length(ElementWidth)];
+[Main_max_index,Period_max_index,SlitHeight_max_index,ElementWidth_max_index]=...
+    ind2sub(size_SM_coup,max_index);
+
+figure;
+polar(theta',intensity(:,Main_max_index,Period_max_index,SlitHeight_max_index,ElementWidth_max_index))
+text(0,0,sprintf('%s %d\n %s %d\n %s %d\n %s %d' ,'Main',Main(Main_max_index)...
+    ,'Period',Period(Period_max_index),'SlitHeight',SlitHeight(SlitHeight_max_index),...
+    'ElementWidth',ElementWidth(ElementWidth_max_index)))
+norm_max_coll_eff=Coll_int(:,Main_max_index,Period_max_index,SlitHeight_max_index,ElementWidth_max_index)...
+    /max(Coll_int(:,Main_max_index,Period_max_index,SlitHeight_max_index,ElementWidth_max_index));
+figure;
+plot(theta2,norm_max_coll_eff)
+text(2.8,0.5,sprintf('%s %d\n %s %d\n %s %d\n %s %d' ,'Main',Main(Main_max_index)...
+    ,'Period',Period(Period_max_index),'SlitHeight',SlitHeight(SlitHeight_max_index),...
+    'ElementWidth',ElementWidth(ElementWidth_max_index)))

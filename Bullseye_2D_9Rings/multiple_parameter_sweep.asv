@@ -1,0 +1,110 @@
+%This code sweeps multiple parameters of the nanoantenna and calculates
+%the optimum parameters. The best parameters are the ones which have the
+%best collection eff. for a single mode fiber i.e. with NA=0.12. 
+% The parameters that are sweeped are the central gap width, the period of
+% the grooves, the dielectric layer thickness and the dipole position
+
+%% INITIALIZE VECTORS AND CONSTANTS
+clear all
+clc
+tic
+theta=-pi/2:0.01:3*pi/2;
+theta2=0:0.01:pi;
+[x,y]=pol2cart(theta,ones(1,length(theta)));
+theta=theta-pi/2;
+% intensity=zeros(length(theta),6,6,6,6);
+% Coll_int=zeros(length(theta2),6,6,6,6);
+% SM_coup_eff=zeros(6,6,6,6);
+i1=0;
+i2=0;
+i3=0;
+i4=0;
+max_SM_Coup_eff=0;
+log_id=fopen('output/log.txt','w');
+
+%% EVALUATE THE COLL. EFF. FOR EACH SET OF PARAMETERS
+fprintf(log_id,'Log file for vaiable design model\n');
+fprintf(log_id,'Optimization began: %s\n',datestr(now));
+
+for Main=1300:100:1600
+    i1=i1+1;
+    for Period=660:20:760
+        i2=i2+1;
+       for d=50:50:200
+           i3=i3+1;
+            for ElementWidth=200:50:400
+                i4=i4+1;
+                %Calculate for Pz Dipole
+                Pz=1;
+                model=Bullseye_Design_2D_center_flat_low(Main,Period,d,ElementWidth,Pz);
+                Pz_Efar=mphinterp(model,'emw.normEfar','Coord',[x;y]);
+                intensity=Pz_Efar.^2;
+                I_fit=fit(theta',intensity','cubicinterp');
+                Pz_Coll_int=integrate(I_fit,theta2,0)-integrate(I_fit,-theta2,0);
+                Pz_SM_coup_eff=Pz_Coll_int(13)/max(Pz_Coll_int);
+                %Calculate for Py Dipole
+                Pz=0;
+                model=Bullseye_Design_2D_center_flat_low(Main,Period,d,ElementWidth,Pz);
+                Py_Efar=mphinterp(model,'emw.normEfar','Coord',[x;y]);
+                intensity=Py_Efar.^2;
+                I_fit=fit(theta',intensity','cubicinterp');
+                Py_Coll_int=integrate(I_fit,theta2,0)-integrate(I_fit,-theta2,0);
+                Py_SM_coup_eff=Py_Coll_int(13)/max(Py_Coll_int);
+                %Calculate average for both dipoles
+                Avg_Coll_eff=(0.6110*Pz_Coll_int/max(Pz_Coll_int))+...
+                    (0.3890*Py_Coll_int/max(Py_Coll_int));
+                Avg_SM_coup_eff=Avg_Coll_eff(13);
+                % Write data to file
+                str_parameters={'Main',Main;'Period',Period;'d',d;'ElementWidth',ElementWidth};
+                file_name=sprintf('%s%s%d%s%d%s%d%s%d%s','output/','Main_',...
+                    Main,'_Period_',Period,'_d_',d,'_ElementWidth_',ElementWidth,'.mat');
+                save(file_name,'theta2','Pz_Coll_int','Py_Coll_int','Avg_Coll_eff','theta','Py_Efar','Pz_Efar','str_parameters')
+                
+                %Find Max. for Avg Sm coll eff
+                if  Avg_SM_coup_eff>=max_SM_Coup_eff
+                    max_SM_Coup_eff= Avg_SM_coup_eff;
+                    Main_max=Main;
+                    Period_max=Period;
+                    d_max=d;
+                    ElementWidth_max=ElementWidth;
+                    max_Coll_eff=Avg_Coll_eff;
+                    max_Pz_Coll_eff=Pz_Coll_int/max(Pz_Coll_int);
+                    max_Py_Coll_eff=Py_Coll_int/max(Py_Coll_int);
+                    
+                    max_Pz_Efar=Pz_Efar;
+                    max_Py_Efar=Py_Efar;
+                   
+                    fprintf(log_id,'Temp. Max found for Main=%d,Period=%d,d=%d,ElementWidth=%d,SM coup eff for Pz=%.4f,Py=%.4f,Avg SM coup. eff=%.4f\n',...
+                        Main_max,Period_max,d_max,ElementWidth_max,Pz_SM_coup_eff,Py_SM_coup_eff,max_SM_Coup_eff);
+                
+                elseif  Avg_SM_coup_eff>=0.5
+                    fprintf(log_id,'High coup. eff for Main=%d,Period=%d,d=%d,ElementWidth=%d, SM coup eff for Pz=%.4f,Py=%.4f,Avg SM coup. eff=%.4f\n',...           
+                        Main,Period,d,ElementWidth,Pz_SM_coup_eff,Py_SM_coup_eff,Avg_SM_coup_eff);
+                end
+                
+                clear model
+            end
+        end
+    end
+end
+fprintf(log_id,'Optimization Ended,Max found for Main=%d,Period=%d,d=%d,ElementWidth=%d, SM coup. eff=%f\n',...
+                        Main_max,Period_max,d_max,ElementWidth_max,max_SM_Coup_eff);
+%% FIND AND PLOT THE BEST SET OF PARAMETERS 
+h(1)=figure;
+polar(theta,max_Pz_Efar)
+hold on 
+polar(theta,max_Py_Efar)
+text(0,0,sprintf('%s %d\n %s %d\n %s %d\n %s %d' ,'Main',Main_max,'Period',Period_max,...
+    'd',d_max,'ElementWidth',ElementWidth_max))
+legend('Pz','Py')
+
+h(2)=figure;
+plot(theta2,max_Coll_eff,theta2, max_Pz_Coll_eff,theta2, max_Py_Coll_eff)
+text(2.6,0.5,sprintf('%s %d\n %s %d\n %s %d\n %s %d\n %s %f' ,'Main', Main_max,'Period',...
+    Period_max,'d',d_max,'ElementWidth',ElementWidth_max, 'max SM Coup eff=', max_SM_Coup_eff))
+legend('AVG','Pz','Py')
+savefig(h,'output\max_coup_eff.fig');
+Running_time=char(duration(0,0,toc));
+fprintf(log_id,'Optimization procedure took %s',Running_time);
+
+fclose(log_id);
